@@ -113,6 +113,11 @@ async function createImage(
 ) {
   var page2 = await browser.newPage();
   await page2.setViewport({ width: 600, height: 800 });
+
+  let fontSize = 2.5;
+  if (userText.length < 80) fontSize = 3.6;
+  else if (userText.length < 160) fontSize = 3;
+
   page2.setContent(`  <!DOCTYPE html>
   <html>
   <head>
@@ -130,13 +135,13 @@ async function createImage(
   .centered {
     position: absolute;
     top: 5%;
-    left: 25%;
-	right: 25%;
+    left: 10%;
+	right: 10%;
   }
   p{
       font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
       font-size: 32px;
-      font-size: 2.7rem;
+      font-size: ${fontSize}rem;
 	    text-shadow: 
   0 0 1px white,
   0 0 2px white,
