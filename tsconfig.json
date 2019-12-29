@@ -16,7 +16,9 @@
     "pretty": true,
     "noFallthroughCasesInSwitch": true,
     "allowUnreachableCode": false,
-    "watch": true
+    "watch": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true
   },
   "include": ["src", "node_modules/puppeteer-tsd/src/index.d.ts"]
 }

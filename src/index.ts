@@ -1,5 +1,31 @@
-import * as puppeteer from "puppeteer";
+import puppeteer from "puppeteer";
 require("dotenv").config({ path: "../src/.env" });
+// Firebase App (the core Firebase SDK) is always required and
+// must be listed before other Firebase SDKs
+import * as firebase from "firebase/app";
+
+// Add the Firebase services that you want to use
+import "firebase/auth";
+import "firebase/firestore";
+
+import * as cron from "node-cron";
+
+// TODO: Replace the following with your app's Firebase project configuration
+import * as firebaseConfig from "./firebaseConfig.json";
+
+const initAndLoginDatabase = () => {
+  firebase.initializeApp(firebaseConfig);
+  firebase
+    .auth()
+    .signInWithEmailAndPassword(
+      process.env.FIRESTORE_USER,
+      process.env.FIRESTORE_PASSWORD
+    );
+};
+
+const hoursAgo = hours =>
+  Math.round(new Date().getTime() / 1000 - hours * 60 * 60);
+
 /**
  * create your .env
  * IG_USERNAME= '***'
@@ -31,7 +57,7 @@ const config = {
   }
 };
 
-let browser, page;
+var browser: puppeteer.Browser, page: puppeteer.Page;
 
 /**
  * open the browser, login using user/psw
@@ -68,32 +94,106 @@ const openBrowserAndLogin = async () => {
  * close all possible modals
  */
 const closeAllModals = async () => {
-  await page.waitFor(1000);
   try {
-    page
-      .waitForSelector(config.selectors.not_now_save_login_info)
-      .then(() => page.click(config.selectors.not_now_save_login_info));
-    page
-      .waitForSelector(config.selectors.not_now_button)
-      .then(() => page.click(config.selectors.not_now_button));
+    await Promise.all([
+      page
+        .waitForSelector(config.selectors.not_now_save_login_info, {
+          timeout: 5000
+        })
+        .then(e => page.click(config.selectors.not_now_save_login_info)),
+      page
+        .waitForSelector(config.selectors.not_now_button, { timeout: 5000 })
+        .then(e => page.click(config.selectors.not_now_button))
+    ]);
   } catch (error) {
-    console.log(error);
+    console.log(error.message);
   }
+};
+
+const getStorieData = async () => {
+  var db = firebase.firestore(); // Initialize Firebase
+  let data = await db
+    .collection("msgs")
+    .where("state", "==", "ma")
+    .where("sent", "==", true)
+    .where("t", ">=", hoursAgo(24))
+    .where("sent_ig", "==", false)
+    .get();
+
+  data.docs.forEach(doc => {
+    let data = doc.data();
+    if (!data.sent_ig) doc.ref.update({ sent_ig: false });
+  });
+
+  if (data.empty) throw new Error(`Empty dataset returned`);
+
+  let firstItem = data.docs[0].data();
+  let jobImage = "https://i.imgur.com/TpHDcwH.png";
+  let rentImage = "https://i.imgur.com/0OxqIoL.png";
+  let backgroundImage = "";
+  let text = firstItem.text; //or boldText
+  let id = data.docs[0].id;
+
+  if (
+    firstItem.entities.intent[0].value === "offer_place" ||
+    firstItem.entities.intent[0].value === "ask_place"
+  )
+    backgroundImage = rentImage;
+  else if (
+    firstItem.entities.intent[0].value === "offer_job" ||
+    firstItem.entities.intent[0].value === "ask_job"
+  )
+    backgroundImage = jobImage;
+
+  return {
+    backgroundImage,
+    text,
+    id
+  };
+};
+
+const setSentOnInstagram = async msgId =>
+  firebase
+    .firestore()
+    .collection("msgs")
+    .doc(msgId)
+    .update({ sent_ig: true });
+
+const loadImage = async image_name => {
+  const [fileChooser] = await Promise.all([
+    page.waitForFileChooser(),
+    page.click(config.selectors.camera_post_stories_post) // some button that triggers file selection
+  ]);
+  let imgPath = getImagePath(image_name);
+  await fileChooser.accept([imgPath]);
+  await page.waitFor(2500);
 };
 
 /**
  * update firestore?
  * @param img_id generated image
  */
-const postStories = async img_id => {
-  const [fileChooser] = await Promise.all([
-    page.waitForFileChooser(),
-    page.click(config.selectors.camera_post_stories_post) // some button that triggers file selection
-  ]);
-  await fileChooser.accept([getImagePath(img_id)]);
-  await page.waitFor(2500);
+const postStories = async () => {
+  let data = await getStorieData();
+  await createImage(data.text, data.backgroundImage, data.id);
+  let shortDateTime = new Date().toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+
+  console.log(
+    `${shortDateTime} postStories... id:${data.id} text:${data.text}`
+  );
+  await loadImage(data.id);
+
   await page.click(config.selectors.button_add_to_your_stories);
   await page.waitFor(3000);
+  await setSentOnInstagram(data.id);
+  await closeAllModals();
 };
 
 //jobs: https://i.imgur.com/TpHDcwH.png
@@ -114,9 +214,9 @@ async function createImage(
   var page2 = await browser.newPage();
   await page2.setViewport({ width: 600, height: 800 });
 
-  let fontSize = 2.5;
+  let fontSize = 2.2;
   if (userText.length < 80) fontSize = 3.6;
-  else if (userText.length < 160) fontSize = 3;
+  else if (userText.length < 160) fontSize = 2.8;
 
   page2.setContent(`  <!DOCTYPE html>
   <html>
@@ -135,10 +235,11 @@ async function createImage(
   .centered {
     position: absolute;
     top: 5%;
-    left: 10%;
-	right: 10%;
+    left: 20%;
+	right: 15%;
   }
   p{
+      word-wrap: break-word;
       font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
       font-size: 32px;
       font-size: ${fontSize}rem;
@@ -163,13 +264,45 @@ async function createImage(
   </body>
   </html> 
 `);
-
+  await page.waitFor(2000);
   await page2.screenshot({
     path: getImagePath(generated_id)
   });
+  console.log(`img created ${getImagePath(generated_id)}`);
   await page2.close();
 }
 
-const getImagePath = img => {
-  return `${config.settings.save_image_to_path}${img}.${config.settings.image_extension}`;
+const getImagePath = name => {
+  return `${config.settings.save_image_to_path}${name}.${config.settings.image_extension}`;
+};
+
+const startCronJobs = async () => {
+  try {
+    //let everyMinute = `* * * * *`;
+    let every30thMinuteExpression = `*/30 * * * *`;
+    cron.schedule(every30thMinuteExpression, postStories);
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+const init = async () => {
+  try {
+    await initAndLoginDatabase();
+    await openBrowserAndLogin();
+    await startCronJobs();
+  } catch (error) {
+    console.log(error.message);
+  }
+};
+
+init();
+
+module.exports = {
+  openBrowserAndLogin,
+  postStories
+  //getImagePath,
+  //createImage,
+  //closeAllModals,
+  //loadImage
 };
