@@ -54,7 +54,12 @@ const config = {
     free_text_mode: "button.HsQIV.storiesSpriteText__filled__44",
     free_text_mode_done: "button.KFJu-",
     button_add_to_your_stories:
-      "span.storiesSpriteNew_story__outline__24__grey_0"
+      "span.storiesSpriteNew_story__outline__24__grey_0",
+
+    button_new_post: `span.glyphsSpriteNew_post__outline__24__grey_9.u-__7`,
+    button_expand: `button.pHnkA`,
+    top_right_next_share: `button.UP43G`,
+    text_area_caption: `textarea._472V_`
   }
 };
 
@@ -166,12 +171,12 @@ const setSentOnInstagram = async msgId =>
     .doc(msgId)
     .update({ sent_ig: true });
 
-const loadImage = async image_name => {
+const loadImage = async (imageName, post_button_selector) => {
   const [fileChooser] = await Promise.all([
     page.waitForFileChooser(),
-    page.click(config.selectors.camera_post_stories_post) // some button that triggers file selection
+    page.click(post_button_selector) // some button that triggers file selection
   ]);
-  let imgPath = getImagePath(image_name);
+  let imgPath = getImagePath(imageName);
   await fileChooser.accept([imgPath]);
   await page.waitFor(2500);
 };
@@ -187,19 +192,46 @@ const shortDate = () => {
   });
 };
 
+const shareInstagramTimeline = async data => {
+  try {
+    let captionText = data.text;
+    let appendText = `whatsApp: http://bit.ly/canarinho1
+     instagram.com/canarinhobuscador`;
+    if (captionText.indexOf(appendText) < 0)
+      captionText += `\n\n ${appendText}`;
+
+    console.log(
+      `${shortDate()} shareInstagramTimeline... id:${data.id} text:${data.text}`
+    );
+    await loadImage(data.id, config.selectors.button_new_post);
+    await page.waitFor(2500);
+    await page.click(config.selectors.button_expand);
+    await page.waitFor(2500);
+    await page.click(config.selectors.top_right_next_share);
+    await page.waitFor(2500);
+    await page.click(config.selectors.text_area_caption);
+    await page.keyboard.type(captionText);
+
+    await page.waitFor(2500);
+    await page.click(config.selectors.top_right_next_share);
+
+    await page.waitFor(3000);
+    await closeAllModals();
+  } catch (error) {
+    console.log(`${shortDate()} shareInstagramTimeline ${error.message}`);
+  }
+};
+
 /**
  * update firestore?
  * @param img_id generated image
  */
-const postStories = async () => {
+const postStories = async data => {
   try {
-    let data = await getStorieData();
-    await createImage(data.text, data.backgroundImage, data.id);
-
     console.log(
       `${shortDate()} postStories... id:${data.id} text:${data.text}`
     );
-    await loadImage(data.id);
+    await loadImage(data.id, config.selectors.camera_post_stories_post);
 
     await page.click(config.selectors.button_add_to_your_stories);
     await page.waitFor(3000);
@@ -207,6 +239,20 @@ const postStories = async () => {
     await closeAllModals();
   } catch (error) {
     console.log(`${shortDate()} postStories ${error.message}`);
+  }
+};
+
+const postOnInstagram = async () => {
+  try {
+    let data = await getStorieData();
+    await createImage(data.text, data.backgroundImage, data.id);
+    console.log(
+      `${shortDate()} postOnInstagram... id:${data.id} text:${data.text}`
+    );
+    await postStories(data);
+    await shareInstagramTimeline(data);
+  } catch (error) {
+    console.log(`${shortDate()} postOnInstagram ${error.message}`);
   }
 };
 
@@ -314,8 +360,8 @@ const init = async () => {
     await openBrowserAndLogin();
 
     while (true) {
-      await postStories();
-      await page.waitFor(5 * 60 * 1000);
+      await postOnInstagram();
+      await page.waitFor(60 * 1000);
     }
   } catch (error) {
     console.log(`${shortDate()} init ${error.message}`);
