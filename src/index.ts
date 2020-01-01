@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer";
 require("dotenv").config({ path: "../src/.env" });
+require("source-map-support").install();
 // Firebase App (the core Firebase SDK) is always required and
 // must be listed before other Firebase SDKs
 import * as firebase from "firebase/app";
@@ -8,12 +9,11 @@ import * as firebase from "firebase/app";
 import "firebase/auth";
 import "firebase/firestore";
 
-import * as cron from "node-cron";
-
 // TODO: Replace the following with your app's Firebase project configuration
 import * as firebaseConfig from "./firebaseConfig.json";
 
-const initAndLoginDatabase = () => {
+const connectToFirebase = () => {
+  console.log(`${shortDate()} initAndLoginDatabase`);
   firebase.initializeApp(firebaseConfig);
   firebase
     .auth()
@@ -43,6 +43,7 @@ const config = {
     image_extension: `jpeg`
   },
   selectors: {
+    html_not_log_in: "html.not-logged-in",
     home_to_login_button: "button.sqdOP",
     username_field: 'input[type="text"]',
     password_field: 'input[type="password"]',
@@ -63,9 +64,10 @@ var browser: puppeteer.Browser, page: puppeteer.Page;
  * open the browser, login using user/psw
  */
 const openBrowserAndLogin = async () => {
+  console.log(`${shortDate()} openBrowserAndLogin`);
   browser = await puppeteer.launch({
     ignoreDefaultArgs: ["--disable-extensions"],
-    //userDataDir: "./puppeteer-chrome",
+    userDataDir: "./puppeteer-chrome",
     headless: config.settings.headless,
     devtools: true,
     defaultViewport: {
@@ -77,38 +79,48 @@ const openBrowserAndLogin = async () => {
   page = await browser.newPage();
   await page.emulate(puppeteer.devices["Galaxy S5"]);
   await page.goto(config.base_url, { timeout: 60000 });
-  await page.waitFor(2500);
-  await page.click(config.selectors.home_to_login_button);
-  await page.waitFor(2500);
-  /* Click on the username field using the field selector*/
-  await page.click(config.selectors.username_field);
-  await page.keyboard.type(config.username);
-  await page.click(config.selectors.password_field);
-  await page.keyboard.type(config.password);
-  await page.click(config.selectors.login_button);
-  await page.waitForNavigation();
-  await closeAllModals();
+
+  try {
+    await page.waitForSelector(config.selectors.html_not_log_in, {
+      timeout: 5000
+    });
+    await page.waitForSelector(config.selectors.home_to_login_button, {
+      timeout: 3000
+    });
+    await page.click(config.selectors.home_to_login_button, { delay: 300 });
+
+    /* Click on the username field using the field selector*/
+    await page.waitForSelector(config.selectors.username_field, {
+      timeout: 3000
+    });
+    await page.waitFor(1000);
+    await page.click(config.selectors.username_field);
+    await page.keyboard.type(config.username);
+    await page.click(config.selectors.password_field);
+    await page.keyboard.type(config.password);
+    await page.click(config.selectors.login_button);
+    await page.waitForNavigation();
+    await closeAllModals();
+  } catch (error) {
+    console.log(`${shortDate()} can't find login elements, ${error.message}`);
+    //await closeAllModals();
+  }
 };
 
 /**
  * close all possible modals
  */
-const closeAllModals = async () => {
-  try {
-    await Promise.all([
-      page
-        .waitForSelector(config.selectors.not_now_save_login_info, {
-          timeout: 5000
-        })
-        .then(e => page.click(config.selectors.not_now_save_login_info)),
-      page
-        .waitForSelector(config.selectors.not_now_button, { timeout: 5000 })
-        .then(e => page.click(config.selectors.not_now_button))
-    ]);
-  } catch (error) {
-    console.log(error.message);
-  }
-};
+const closeAllModals = async () =>
+  Promise.all([
+    page
+      .waitForSelector(config.selectors.not_now_save_login_info, {
+        timeout: 5000
+      })
+      .then(e => page.click(config.selectors.not_now_save_login_info)),
+    page
+      .waitForSelector(config.selectors.not_now_button, { timeout: 5000 })
+      .then(e => page.click(config.selectors.not_now_button))
+  ]);
 
 const getStorieData = async () => {
   var db = firebase.firestore(); // Initialize Firebase
@@ -119,11 +131,6 @@ const getStorieData = async () => {
     .where("t", ">=", hoursAgo(24))
     .where("sent_ig", "==", false)
     .get();
-
-  data.docs.forEach(doc => {
-    let data = doc.data();
-    if (!data.sent_ig) doc.ref.update({ sent_ig: false });
-  });
 
   if (data.empty) throw new Error(`Empty dataset returned`);
 
@@ -169,14 +176,8 @@ const loadImage = async image_name => {
   await page.waitFor(2500);
 };
 
-/**
- * update firestore?
- * @param img_id generated image
- */
-const postStories = async () => {
-  let data = await getStorieData();
-  await createImage(data.text, data.backgroundImage, data.id);
-  let shortDateTime = new Date().toLocaleDateString("en-GB", {
+const shortDate = () => {
+  return new Date().toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -184,16 +185,29 @@ const postStories = async () => {
     minute: "2-digit",
     second: "2-digit"
   });
+};
 
-  console.log(
-    `${shortDateTime} postStories... id:${data.id} text:${data.text}`
-  );
-  await loadImage(data.id);
+/**
+ * update firestore?
+ * @param img_id generated image
+ */
+const postStories = async () => {
+  try {
+    let data = await getStorieData();
+    await createImage(data.text, data.backgroundImage, data.id);
 
-  await page.click(config.selectors.button_add_to_your_stories);
-  await page.waitFor(3000);
-  await setSentOnInstagram(data.id);
-  await closeAllModals();
+    console.log(
+      `${shortDate()} postStories... id:${data.id} text:${data.text}`
+    );
+    await loadImage(data.id);
+
+    await page.click(config.selectors.button_add_to_your_stories);
+    await page.waitFor(3000);
+    await setSentOnInstagram(data.id);
+    await closeAllModals();
+  } catch (error) {
+    console.log(`${shortDate()} postStories ${error.message}`);
+  }
 };
 
 //jobs: https://i.imgur.com/TpHDcwH.png
@@ -218,7 +232,8 @@ async function createImage(
   if (userText.length < 80) fontSize = 3.6;
   else if (userText.length < 160) fontSize = 2.8;
 
-  page2.setContent(`  <!DOCTYPE html>
+  page2.setContent(
+    `  <!DOCTYPE html>
   <html>
   <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -263,8 +278,10 @@ async function createImage(
 
   </body>
   </html> 
-`);
-  await page.waitFor(2000);
+`,
+    { waitUntil: "domcontentloaded" }
+  );
+  await page2.waitFor(2000);
   await page2.screenshot({
     path: getImagePath(generated_id)
   });
@@ -276,23 +293,32 @@ const getImagePath = name => {
   return `${config.settings.save_image_to_path}${name}.${config.settings.image_extension}`;
 };
 
-const startCronJobs = async () => {
-  try {
-    //let everyMinute = `* * * * *`;
-    let every30thMinuteExpression = `*/30 * * * *`;
-    cron.schedule(every30thMinuteExpression, postStories);
-  } catch (error) {
-    console.log(error.message);
-  }
+const clearInstagramDb = async (hours = 24) => {
+  var db = firebase.firestore(); // Initialize Firebase
+  let data = await db
+    .collection("msgs")
+    .where("state", "==", "ma")
+    .where("sent", "==", true)
+    .where("t", ">=", hoursAgo(hours))
+    .get();
+
+  data.docs.forEach(doc => {
+    doc.ref.update({ sent_ig: false });
+    console.log(`fix: ${doc.id}`);
+  });
 };
 
 const init = async () => {
   try {
-    await initAndLoginDatabase();
+    await connectToFirebase();
     await openBrowserAndLogin();
-    await startCronJobs();
+
+    while (true) {
+      await postStories();
+      await page.waitFor(5 * 60 * 1000);
+    }
   } catch (error) {
-    console.log(error.message);
+    console.log(`${shortDate()} init ${error.message}`);
   }
 };
 
@@ -300,9 +326,12 @@ init();
 
 module.exports = {
   openBrowserAndLogin,
-  postStories
+  postStories,
+  clearInstagramDb,
+  getStorieData,
+  connectToFirebase
   //getImagePath,
-  //createImage,
+  //createImage
   //closeAllModals,
   //loadImage
 };
