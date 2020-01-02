@@ -1,1 +1,4 @@
 node_modules
+src/.env
+src/firebaseConfig.json
+yarn.lock
