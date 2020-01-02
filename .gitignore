@@ -1,0 +1,11 @@
+node_modules
+dist/puppeteer-chrome
+package-lock.json
+yarn-error.log
+src/.env
+dist/index.js.map
+dist/index.js
+dist/index.d.ts
+src/firebaseConfig.json
+dist/firebaseConfig.json
+yarn.lock
