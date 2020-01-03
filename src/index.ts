@@ -216,6 +216,14 @@ const shareInstagramTimeline = async data => {
     await page.click(config.selectors.top_right_next_share);
 
     await page.waitFor(3000);
+    await page.waitForSelector('button.tuK87.sqdOP.yWX7d.y3zKF',{timeout:5000})
+    await page.waitFor(3000);
+    await page.click('button.qXyTW'); //button back
+    await page.waitFor(3000);
+    await page.click('button.qXyTW'); //button X
+    console.log('ERRO DETECTADO AO POSTAR NA TIMELINE')
+
+    await page.waitFor(3000);
     await closeAllModals();
   } catch (error) {
     console.log(`${shortDate()} shareInstagramTimeline ${error.message}`);
@@ -232,7 +240,6 @@ const postStories = async data => {
       `${shortDate()} postStories... id:${data.id} text:${data.text}`
     );
     await loadImage(data.id, config.selectors.camera_post_stories_post);
-
     await page.click(config.selectors.button_add_to_your_stories);
     await page.waitFor(3000);
     await setSentOnInstagram(data.id);
@@ -375,9 +382,9 @@ module.exports = {
   postStories,
   clearInstagramDb,
   getStorieData,
-  connectToFirebase
-  //getImagePath,
-  //createImage
+  connectToFirebase,
+  getImagePath,
+  createImage
   //closeAllModals,
   //loadImage
 };
