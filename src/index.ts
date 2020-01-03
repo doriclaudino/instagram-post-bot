@@ -210,7 +210,7 @@ const shareInstagramTimeline = async data => {
     await page.click(config.selectors.top_right_next_share);
     await page.waitFor(2500);
     await page.click(config.selectors.text_area_caption);
-    await page.keyboard.type(captionText);
+    await page.keyboard.type(captionText,{delay:100});
 
     await page.waitFor(2500);
     await page.click(config.selectors.top_right_next_share);
