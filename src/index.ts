@@ -368,12 +368,14 @@ const init = async () => {
 
     while (true) {
       await postOnInstagram();
-      await page.waitFor(60 * 1000);
+      await page.waitFor(60 * getRandomArbitrary(5000,10000));
     }
   } catch (error) {
     console.log(`${shortDate()} init ${error.message}`);
   }
 };
+
+const getRandomArbitrary = (min, max)  => Math.random() * (max - min) + min;
 
 init();
 
